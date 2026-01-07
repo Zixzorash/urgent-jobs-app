@@ -34,7 +34,7 @@ import {
   Dumbbell, Gamepad2, PawPrint, HeartHandshake, Key,
   LocateFixed, ArrowRight, Loader2, Route, 
   UserCog, Lock, ChevronRight, BellRing, ToggleLeft, ToggleRight,
-  MessageSquare, XCircle, CheckCircle2, UserCircle2
+  MessageSquare, XCircle, CheckCircle2, UserCircle2, Map, Camera
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -53,32 +53,27 @@ const appId ='urgent-jobs-v1';
 
 // --- Services Data ---
 const SERVICES = [
-  // หมวดขนส่งและเดินทาง (Dual Location)
+  // หมวดขนส่งและเดินทาง
   { id: 'transport', name: 'รับ-ส่ง คน', icon: <Car />, color: 'bg-blue-100 text-blue-600', type: 'route' },
   { id: 'driver', name: 'คนขับรถ', icon: <Key />, color: 'bg-indigo-100 text-indigo-600', type: 'route' },
   { id: 'messenger', name: 'รับส่งของ', icon: <Package />, color: 'bg-sky-100 text-sky-600', type: 'route' },
   { id: 'move', name: 'ช่วยขนย้าย', icon: <Truck />, color: 'bg-amber-100 text-amber-600', type: 'route' },
-  
   // หมวดดูแลและงานบ้าน
   { id: 'maid', name: 'หาแม่บ้าน', icon: <Home />, color: 'bg-rose-100 text-rose-600', type: 'single' },
   { id: 'laundry', name: 'ฝากซักผ้า', icon: <Shirt />, color: 'bg-cyan-100 text-cyan-600', type: 'route' },
   { id: 'clean', name: 'ทำความสะอาด', icon: <SprayCan />, color: 'bg-teal-100 text-teal-600', type: 'single' },
-  
   // หมวดดูแลพิเศษ
   { id: 'pet_care', name: 'ดูแลสัตว์เลี้ยง', icon: <PawPrint />, color: 'bg-orange-100 text-orange-600', type: 'single' }, 
   { id: 'elder_care', name: 'ดูแลผู้สูงอายุ', icon: <HeartHandshake />, color: 'bg-red-100 text-red-600', type: 'single' }, 
   { id: 'bodyguard', name: 'บอดี้การ์ด', icon: <Shield />, color: 'bg-slate-100 text-slate-600', type: 'single' },
-  
-  // หมวดซื้อและกิน (Dual Location)
+  // หมวดซื้อและกิน
   { id: 'shopping', name: 'ฝากซื้อของ', icon: <ShoppingBag />, color: 'bg-green-100 text-green-600', type: 'route' },
   { id: 'food', name: 'ซื้ออาหาร', icon: <Utensils />, color: 'bg-lime-100 text-lime-600', type: 'route' },
   { id: 'queue', name: 'ต่อคิว', icon: <Users />, color: 'bg-purple-100 text-purple-600', type: 'single' },
-
   // หมวดเพื่อนและกิจกรรม
   { id: 'travel_buddy', name: 'หาเพื่อนเที่ยว', icon: <Plane />, color: 'bg-pink-100 text-pink-600', type: 'single' },
   { id: 'sport_buddy', name: 'เพื่อนเล่นกีฬา', icon: <Dumbbell />, color: 'bg-emerald-100 text-emerald-600', type: 'single' },
   { id: 'game_buddy', name: 'คนเล่นเกมส์', icon: <Gamepad2 />, color: 'bg-violet-100 text-violet-600', type: 'single' },
-
   // หมวดงานวิชาชีพและอื่นๆ
   { id: 'it_tech', name: 'ช่างไอที', icon: <Monitor />, color: 'bg-blue-50 text-blue-800', type: 'single' },
   { id: 'detective', name: 'หานักสืบ', icon: <Eye />, color: 'bg-gray-100 text-gray-800', type: 'single' },
@@ -86,7 +81,7 @@ const SERVICES = [
   { id: 'general', name: 'งานทั่วไป', icon: <Grid />, color: 'bg-fuchsia-100 text-fuchsia-600', type: 'single' },
 ];
 
-// --- Utility: Distance Calculation ---
+// --- Utility Functions ---
 const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -99,12 +94,11 @@ const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
 const formatPrice = (price) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 }).format(price);
 const formatDate = (timestamp) => {
   if (!timestamp) return '-';
-  // Check if it's a Firestore Timestamp or standard Date
   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
   return date.toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 };
 
-// --- Leaflet Helper: Load Assets ---
+// --- Leaflet Helper ---
 const loadLeafletAssets = () => {
   if (!document.getElementById('leaflet-css')) {
     const link = document.createElement('link');
@@ -122,7 +116,7 @@ const loadLeafletAssets = () => {
   return Promise.resolve();
 };
 
-// --- Component: Interactive Map Picker ---
+// --- Map Components ---
 const LeafletMapPicker = ({ lat, lng, onSelectLocation }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -134,35 +128,17 @@ const LeafletMapPicker = ({ lat, lng, onSelectLocation }) => {
       if (!window.L || mapInstanceRef.current) return;
       const initialLat = lat || 13.7563;
       const initialLng = lng || 100.5018;
-
       mapInstanceRef.current = window.L.map(mapRef.current).setView([initialLat, initialLng], 13);
       window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(mapInstanceRef.current);
-
-      const customIcon = window.L.icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-      });
-
+      const customIcon = window.L.icon({ iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png', shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
       markerRef.current = window.L.marker([initialLat, initialLng], { draggable: true, icon: customIcon }).addTo(mapInstanceRef.current);
-
-      markerRef.current.on('dragend', function(e) {
-        const pos = markerRef.current.getLatLng();
-        if (onSelectLocation) onSelectLocation(pos.lat, pos.lng);
-      });
-
-      mapInstanceRef.current.on('click', function(e) {
-        markerRef.current.setLatLng(e.latlng);
-        if (onSelectLocation) onSelectLocation(e.latlng.lat, e.latlng.lng);
-      });
+      markerRef.current.on('dragend', function(e) { const pos = markerRef.current.getLatLng(); if (onSelectLocation) onSelectLocation(pos.lat, pos.lng); });
+      mapInstanceRef.current.on('click', function(e) { markerRef.current.setLatLng(e.latlng); if (onSelectLocation) onSelectLocation(e.latlng.lat, e.latlng.lng); });
     }
   }, []);
-
   return <div ref={mapRef} style={{ height: '240px', width: '100%', borderRadius: '12px', zIndex: 0 }} />;
 };
 
-// --- Component: Form Preview Map ---
 const LeafletFormMap = ({ startLocation, endLocation, isRoute }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -170,7 +146,6 @@ const LeafletFormMap = ({ startLocation, endLocation, isRoute }) => {
 
   useEffect(() => {
     loadLeafletAssets().then(initMap);
-    
     function initMap() {
        if (!window.L || mapInstanceRef.current) return;
        const map = window.L.map(mapRef.current).setView([13.7563, 100.5018], 11);
@@ -182,54 +157,22 @@ const LeafletFormMap = ({ startLocation, endLocation, isRoute }) => {
 
   useEffect(() => {
     if (!window.L || !mapInstanceRef.current || !layerGroupRef.current) return;
-    
     const lg = layerGroupRef.current;
     lg.clearLayers();
-
-    const Icon = window.L.icon({
-       iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-       shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-       iconSize: [25, 41], iconAnchor: [12, 41], shadowSize: [41, 41]
-    });
-
-    const RedIcon = window.L.icon({
-       iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-       shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-       iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-    });
-
-    const GreenIcon = window.L.icon({
-       iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-       shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-       iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-    });
+    const Icon = window.L.icon({ iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], shadowSize: [41, 41] });
+    const RedIcon = window.L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+    const GreenIcon = window.L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
 
     if (isRoute) {
         const bounds = [];
-        if (startLocation) {
-            window.L.marker([startLocation.lat, startLocation.lng], { icon: GreenIcon }).addTo(lg).bindPopup("ต้นทาง");
-            bounds.push([startLocation.lat, startLocation.lng]);
-        }
-        if (endLocation) {
-            window.L.marker([endLocation.lat, endLocation.lng], { icon: RedIcon }).addTo(lg).bindPopup("ปลายทาง");
-            bounds.push([endLocation.lat, endLocation.lng]);
-        }
-
-        if (bounds.length === 2) {
-            window.L.polyline(bounds, { color: 'blue', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(lg);
-            mapInstanceRef.current.fitBounds(bounds, { padding: [30, 30] });
-        } else if (bounds.length === 1) {
-            mapInstanceRef.current.setView(bounds[0], 14);
-        }
+        if (startLocation) { window.L.marker([startLocation.lat, startLocation.lng], { icon: GreenIcon }).addTo(lg).bindPopup("ต้นทาง"); bounds.push([startLocation.lat, startLocation.lng]); }
+        if (endLocation) { window.L.marker([endLocation.lat, endLocation.lng], { icon: RedIcon }).addTo(lg).bindPopup("ปลายทาง"); bounds.push([endLocation.lat, endLocation.lng]); }
+        if (bounds.length === 2) { window.L.polyline(bounds, { color: 'blue', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(lg); mapInstanceRef.current.fitBounds(bounds, { padding: [30, 30] }); } 
+        else if (bounds.length === 1) { mapInstanceRef.current.setView(bounds[0], 14); }
     } else {
-        if (startLocation) {
-            window.L.marker([startLocation.lat, startLocation.lng], { icon: Icon }).addTo(lg);
-            mapInstanceRef.current.setView([startLocation.lat, startLocation.lng], 15);
-        }
+        if (startLocation) { window.L.marker([startLocation.lat, startLocation.lng], { icon: Icon }).addTo(lg); mapInstanceRef.current.setView([startLocation.lat, startLocation.lng], 15); }
     }
-
   }, [startLocation, endLocation, isRoute]);
-
   return <div ref={mapRef} className="w-full h-48 rounded-lg z-0 border border-gray-200 mt-2 bg-gray-50" />;
 }
 
@@ -254,6 +197,15 @@ export default function UrgentJobsApp() {
   const [userLocation, setUserLocation] = useState(null);
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [guestActionName, setGuestActionName] = useState('');
+
+  // Set Favicon
+  useEffect(() => {
+    const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+    link.type = 'image/svg+xml'; link.rel = 'icon';
+    link.href = `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23f97316%22 /><path d=%22M60 10L30 50h20l-10 40 30-40H50z%22 fill=%22white%22 stroke=%22white%22 stroke-width=%224%22 stroke-linejoin=%22round%22/></svg>`;
+    document.getElementsByTagName('head')[0].appendChild(link);
+    document.title = "จ๊อบด่วน | Urgent Jobs";
+  }, []);
 
   // Auth & Location
   useEffect(() => {
@@ -331,8 +283,13 @@ export default function UrgentJobsApp() {
                  {userLocation ? 'ระบุพิกัดแล้ว' : 'ไม่ระบุพิกัด'}
                </div>
              </div>
-             <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm border border-white/30">
-               <User className="w-5 h-5" />
+             {/* Profile Icon with Image */}
+             <div onClick={() => navigateTo('profile')} className="w-9 h-9 rounded-full border-2 border-white/50 overflow-hidden cursor-pointer bg-white/20 flex items-center justify-center">
+               {userData?.photoBase64 ? (
+                 <img src={userData.photoBase64} alt="Profile" className="w-full h-full object-cover" />
+               ) : (
+                 <User className="w-5 h-5 text-white" />
+               )}
              </div>
           </div>
         </header>
@@ -886,7 +843,14 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
   const [messages, setMessages] = useState([]);
   const [showChat, setShowChat] = useState(false);
   const [inputMsg, setInputMsg] = useState('');
+  const [selectedPerson, setSelectedPerson] = useState(null); // State for Person Popup
+  const [employerPhoto, setEmployerPhoto] = useState(null);
+  const [workerPhoto, setWorkerPhoto] = useState(null);
   
+  const startLoc = currentJob.startLocation || currentJob.location;
+  const endLoc = currentJob.endLocation;
+  const isRoute = currentJob.categoryType === 'route';
+
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id), d => setCurrentJob({id: d.id, ...d.data()}));
     return () => unsub();
@@ -900,6 +864,17 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
      }
   }, [job.id, showChat]);
 
+  // Fetch photos
+  useEffect(() => {
+      const fetchPhoto = async (uid, setPhoto) => {
+          if(!uid) return;
+          const snap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'profile', 'info'));
+          if(snap.exists() && snap.data().photoBase64) setPhoto(snap.data().photoBase64);
+      }
+      fetchPhoto(currentJob.employerId, setEmployerPhoto);
+      if(currentJob.workerId) fetchPhoto(currentJob.workerId, setWorkerPhoto);
+  }, [currentJob.employerId, currentJob.workerId]);
+
   const sendMsg = async (e) => {
     e.preventDefault();
     if(!inputMsg.trim()) return;
@@ -907,11 +882,27 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
     setInputMsg('');
   };
 
+  const sendImage = async (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id, 'messages'), { 
+              image: reader.result, 
+              senderId: user.uid, 
+              createdAt: serverTimestamp() 
+          });
+      };
+      reader.readAsDataURL(file);
+  };
+
   const handleAction = async (action) => {
      if(!user) return checkAuth();
      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id);
      
      if(action === 'accept') {
+         // Get current user photo to store in job for quicker access? Or just rely on ID.
+         // Storing snapshots is better for history.
          await updateDoc(ref, { 
              status: 'in_progress', 
              workerId: user.uid, 
@@ -929,6 +920,34 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
      }
   };
 
+  const handleNavigate = () => {
+    let url = '';
+    if (isRoute && startLoc && endLoc) {
+      url = `https://www.google.com/maps/dir/?api=1&origin=${startLoc.lat},${startLoc.lng}&destination=${endLoc.lat},${endLoc.lng}`;
+    } else if (startLoc) {
+      url = `https://www.google.com/maps/search/?api=1&query=${startLoc.lat},${startLoc.lng}`;
+    }
+    if (url) window.open(url, '_blank');
+  };
+
+  const openPersonPopup = (role) => {
+      if (role === 'employer') {
+          setSelectedPerson({
+              name: currentJob.employerName,
+              phone: currentJob.contactPhone,
+              photo: employerPhoto,
+              role: 'ผู้จ้าง'
+          });
+      } else if (role === 'worker' && currentJob.workerId) {
+          setSelectedPerson({
+              name: currentJob.workerName,
+              phone: currentJob.workerPhone,
+              photo: workerPhoto,
+              role: 'ผู้รับงาน'
+          });
+      }
+  };
+
   const isEmp = user && user.uid === currentJob.employerId;
   const isWkr = user && user.uid === currentJob.workerId;
   const isPart = isEmp || isWkr;
@@ -942,16 +961,17 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
        </div>
        
        <div className="flex-1 overflow-y-auto bg-gray-50 p-4 pb-24">
-          {/* Status Banner */}
           {currentJob.status === 'cancelled' && <div className="bg-red-100 text-red-600 p-3 rounded-xl mb-4 text-center font-bold flex items-center justify-center"><XCircle className="w-5 h-5 mr-2"/> งานนี้ถูกยกเลิกแล้ว</div>}
           {currentJob.status === 'completed' && <div className="bg-green-100 text-green-600 p-3 rounded-xl mb-4 text-center font-bold flex items-center justify-center"><CheckCircle2 className="w-5 h-5 mr-2"/> งานเสร็จสิ้นแล้ว</div>}
 
-          {/* User Info Cards */}
+          {/* Person Cards (Clickable) */}
           <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+              <div onClick={() => openPersonPopup('employer')} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer active:scale-95 transition-transform">
                   <p className="text-xs text-gray-400 mb-2 font-bold">ผู้จ้าง (Employer)</p>
                   <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600"><UserCircle2 className="w-5 h-5"/></div>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 overflow-hidden">
+                          {employerPhoto ? <img src={employerPhoto} className="w-full h-full object-cover"/> : <UserCircle2 className="w-5 h-5"/>}
+                      </div>
                       <div className="overflow-hidden">
                           <p className="text-sm font-bold truncate">{currentJob.employerName}</p>
                           <p className="text-xs text-gray-500 truncate">{currentJob.contactPhone}</p>
@@ -959,10 +979,12 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
                   </div>
               </div>
               {currentJob.workerId ? (
-                  <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                  <div onClick={() => openPersonPopup('worker')} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 cursor-pointer active:scale-95 transition-transform">
                       <p className="text-xs text-gray-400 mb-2 font-bold">ผู้รับงาน (Worker)</p>
                       <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600"><UserCircle2 className="w-5 h-5"/></div>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-orange-100 text-orange-600 overflow-hidden">
+                              {workerPhoto ? <img src={workerPhoto} className="w-full h-full object-cover"/> : <UserCircle2 className="w-5 h-5"/>}
+                          </div>
                           <div className="overflow-hidden">
                               <p className="text-sm font-bold truncate">{currentJob.workerName}</p>
                               <p className="text-xs text-gray-500 truncate">{currentJob.workerPhone}</p>
@@ -984,6 +1006,37 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
              </div>
              <p className="text-gray-600 text-sm mb-4 bg-gray-50 p-3 rounded-xl">{currentJob.description}</p>
              
+             {/* New Location Details & Navigation */}
+             <div className="mb-4">
+                <div className="flex justify-between items-end mb-2">
+                    <h3 className="font-bold text-gray-700 flex items-center"><MapPin className="w-4 h-4 mr-1"/> สถานที่</h3>
+                    {isRoute && currentJob.distance && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-bold">ระยะทาง {currentJob.distance.toFixed(1)} กม.</span>}
+                </div>
+                
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-sm space-y-3">
+                    <div>
+                        <p className="text-xs text-gray-400 font-bold mb-1">{isRoute ? 'ต้นทาง (จุดรับ)' : 'สถานที่ปฏิบัติงาน'}</p>
+                        <p className="font-medium text-gray-800">{startLoc?.name || 'ไม่ระบุชื่อสถานที'}</p>
+                        <p className="text-xs text-gray-500 truncate">{startLoc?.address || 'ไม่ระบุที่อยู่'}</p>
+                    </div>
+                    
+                    {isRoute && endLoc && (
+                        <>
+                            <div className="border-t border-gray-200"></div>
+                            <div>
+                                <p className="text-xs text-gray-400 font-bold mb-1">ปลายทาง (จุดส่ง)</p>
+                                <p className="font-medium text-gray-800">{endLoc?.name || 'ไม่ระบุชื่อสถานที'}</p>
+                                <p className="text-xs text-gray-500 truncate">{endLoc?.address || 'ไม่ระบุที่อยู่'}</p>
+                            </div>
+                        </>
+                    )}
+
+                    <button onClick={handleNavigate} className="w-full mt-2 bg-white border border-blue-200 text-blue-600 py-2 rounded-lg flex items-center justify-center text-xs font-bold shadow-sm hover:bg-blue-50 transition">
+                        <Navigation className="w-4 h-4 mr-2" /> เปิดนำทาง (Google Maps)
+                    </button>
+                </div>
+             </div>
+
              {/* Map */}
              <div className="bg-gray-100 rounded-xl overflow-hidden mb-4 relative border border-gray-200 p-2">
                  <LeafletFormMap 
@@ -993,7 +1046,6 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
                  />
              </div>
 
-             {/* Timestamps */}
              <div className="space-y-2 pt-2 border-t border-gray-100">
                  <div className="flex items-center justify-between text-xs text-gray-500">
                     <span>สร้างเมื่อ:</span>
@@ -1009,9 +1061,7 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
           </div>
        </div>
        
-       {/* Bottom Actions */}
        <div className="bg-white p-4 border-t absolute bottom-0 w-full flex flex-col gap-2 shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
-          {/* Case 1: Open Job */}
           {currentJob.status === 'open' && (
               isEmp ? (
                   <button onClick={() => handleAction('cancel')} className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold border border-red-100">ยกเลิกงานนี้</button>
@@ -1020,7 +1070,6 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
               )
           )}
 
-          {/* Case 2: In Progress */}
           {currentJob.status === 'in_progress' && isPart && (
               <div className="flex gap-2">
                   <button onClick={() => handleAction('cancel')} className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold">ยกเลิกงาน</button>
@@ -1031,7 +1080,6 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
           )}
        </div>
 
-       {/* Floating Chat Button */}
        {isPart && currentJob.status !== 'cancelled' && (
            <button 
              onClick={() => setShowChat(true)}
@@ -1042,7 +1090,7 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
            </button>
        )}
 
-       {/* Chat Modal Overlay */}
+       {/* Chat Modal */}
        {showChat && (
            <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-200">
                <div className="bg-white h-[80%] rounded-t-3xl flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300">
@@ -1055,15 +1103,42 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
                        {messages.map((m, i) => (
                            <div key={i} className={`flex ${m.senderId === user.uid ? 'justify-end' : 'justify-start'}`}>
                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm shadow-sm ${m.senderId === user.uid ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border text-gray-800 rounded-bl-none'}`}>
+                                   {m.image ? <img src={m.image} className="rounded-lg mb-1 max-w-full" /> : null}
                                    {m.text}
                                </div>
                            </div>
                        ))}
                    </div>
-                   <form onSubmit={sendMsg} className="p-3 border-t bg-white flex gap-2 pb-6">
+                   <form onSubmit={sendMsg} className="p-3 border-t bg-white flex gap-2 pb-6 items-center">
+                       <label className="p-2 bg-gray-100 rounded-full text-gray-500 cursor-pointer hover:bg-gray-200">
+                           <Camera className="w-5 h-5" />
+                           <input type="file" accept="image/*" className="hidden" onChange={sendImage} />
+                       </label>
                        <input autoFocus value={inputMsg} onChange={e => setInputMsg(e.target.value)} className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-100" placeholder="พิมพ์ข้อความ..."/>
                        <button type="submit" className="bg-blue-600 text-white p-3 rounded-full shadow-lg"><Send className="w-5 h-5"/></button>
                    </form>
+               </div>
+           </div>
+       )}
+
+       {/* Person Popup Modal */}
+       {selectedPerson && (
+           <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+               <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl flex flex-col items-center relative animate-in zoom-in-95 duration-200">
+                   <button onClick={() => setSelectedPerson(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X className="w-6 h-6"/></button>
+                   
+                   <div className="w-24 h-24 rounded-full bg-gray-100 border-4 border-white shadow-lg mb-4 overflow-hidden flex items-center justify-center">
+                       {selectedPerson.photo ? <img src={selectedPerson.photo} className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-gray-400" />}
+                   </div>
+                   
+                   <h3 className="text-xl font-bold text-gray-800 text-center">{selectedPerson.name}</h3>
+                   <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full mt-2 font-bold">{selectedPerson.role}</span>
+                   
+                   <div className="mt-6 w-full space-y-3">
+                       <a href={`tel:${selectedPerson.phone}`} className="flex items-center justify-center w-full bg-green-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-green-200 active:scale-95 transition-transform">
+                           <Phone className="w-5 h-5 mr-2" /> โทรหา ({selectedPerson.phone})
+                       </a>
+                   </div>
                </div>
            </div>
        )}
@@ -1078,8 +1153,8 @@ function ProfileScreen({ user, userData, setView, navigateTo }) {
             <div className="bg-white p-6 pb-8 rounded-b-3xl shadow-sm mb-4 flex flex-col items-center relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-orange-400 to-amber-500"></div>
                 <div className="w-24 h-24 bg-white p-1 rounded-full shadow-lg z-10 mb-3 mt-8">
-                    <div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden">
-                        <User className="w-12 h-12 text-gray-400" />
+                    <div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-4 border-white">
+                        {userData?.photoBase64 ? <img src={userData.photoBase64} className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-gray-400" />}
                     </div>
                 </div>
                 <h2 className="text-xl font-bold text-gray-800">{userData?.displayName}</h2>
@@ -1102,7 +1177,7 @@ function ProfileScreen({ user, userData, setView, navigateTo }) {
                     <LogOut className="w-5 h-5 mr-2" /> ออกจากระบบ
                 </button>
             </div>
-            <div className="mt-8 text-center text-xs text-gray-300">v9.0 (Job Detail Upgrade)</div>
+            <div className="mt-8 text-center text-xs text-gray-300">v10.0 (Popup, Photo Upload, Image Chat)</div>
         </div>
     );
 }
@@ -1112,14 +1187,26 @@ function ProfileEditScreen({ user, userData, setView, setUserData }) {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [photo, setPhoto] = useState(userData?.photoBase64 || null);
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setPhoto(reader.result);
+        };
+        reader.readAsDataURL(file);
+    };
 
     const handleSave = async (e) => {
         e.preventDefault();
         setLoading(true);
         try {
+            const updates = { displayName: name, photoBase64: photo };
             const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'info');
-            await updateDoc(userRef, { displayName: name });
-            await updateProfile(user, { displayName: name });
+            await updateDoc(userRef, updates);
+            await updateProfile(user, { displayName: name }); // Auth profile photoURL has limit, usually skip for base64
 
             if (newPassword) {
                 if (newPassword !== confirmPassword) {
@@ -1132,7 +1219,7 @@ function ProfileEditScreen({ user, userData, setView, setUserData }) {
             } else {
                 alert('อัปเดตข้อมูลเรียบร้อยแล้ว');
             }
-            setUserData(prev => ({ ...prev, displayName: name }));
+            setUserData(prev => ({ ...prev, ...updates }));
             setView('profile');
         } catch (error) {
             console.error(error);
@@ -1149,6 +1236,20 @@ function ProfileEditScreen({ user, userData, setView, setUserData }) {
             </div>
             <div className="p-5 flex-1 overflow-y-auto">
                 <form onSubmit={handleSave} className="space-y-6">
+                    {/* Image Upload */}
+                    <div className="flex flex-col items-center">
+                        <label className="relative cursor-pointer group">
+                            <div className="w-28 h-28 rounded-full bg-gray-200 overflow-hidden border-4 border-white shadow-md">
+                                {photo ? <img src={photo} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400" />}
+                            </div>
+                            <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Camera className="text-white w-8 h-8" />
+                            </div>
+                            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                        </label>
+                        <p className="text-xs text-gray-400 mt-2">แตะเพื่อเปลี่ยนรูป</p>
+                    </div>
+
                     <div>
                         <label className={styles.label}>ชื่อ-นามสกุล</label>
                         <input value={name} onChange={e => setName(e.target.value)} className={styles.input} />
