@@ -33,7 +33,8 @@ import {
   Home, Eye, Car, Shirt, Plane, Monitor, Shield, 
   Dumbbell, Gamepad2, PawPrint, HeartHandshake, Key,
   LocateFixed, ArrowRight, Loader2, Route, 
-  UserCog, Lock, ChevronRight, BellRing, ToggleLeft, ToggleRight
+  UserCog, Lock, ChevronRight, BellRing, ToggleLeft, ToggleRight,
+  MessageSquare, XCircle, CheckCircle2, UserCircle2
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -96,6 +97,12 @@ const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
 }
 
 const formatPrice = (price) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 }).format(price);
+const formatDate = (timestamp) => {
+  if (!timestamp) return '-';
+  // Check if it's a Firestore Timestamp or standard Date
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  return date.toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
 
 // --- Leaflet Helper: Load Assets ---
 const loadLeafletAssets = () => {
@@ -340,7 +347,7 @@ export default function UrgentJobsApp() {
         {view === 'profile' && <ProfileScreen user={user} userData={userData} setView={setView} navigateTo={navigateTo} />}
         {view === 'profile-edit' && <ProfileEditScreen user={user} userData={userData} setView={setView} setUserData={setUserData} />}
         {view === 'profile-notifications' && <NotificationSettingsScreen setView={setView} />}
-        {view === 'job-detail' && <JobDetailScreen user={user} job={selectedJob} setView={setView} checkAuth={() => navigateTo('auth', 'รับงานนี้')} />}
+        {view === 'job-detail' && <JobDetailScreen user={user} job={selectedJob} setView={setView} checkAuth={() => navigateTo('auth', 'รับงานนี้')} userData={userData} />}
       </main>
 
       {/* Bottom Nav */}
@@ -864,7 +871,7 @@ function MyJobsScreen({ user, setView, setSelectedJob }) {
         {list.map(job => (
           <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail'); }} className={styles.card}>
             <div className="p-4 flex justify-between items-center">
-              <div><h3 className="font-bold text-gray-800">{job.title}</h3><span className={`text-[10px] px-2 py-0.5 rounded-full text-white ${job.status === 'open' ? 'bg-green-500' : job.status === 'completed' ? 'bg-gray-500' : 'bg-blue-500'}`}>{job.status}</span></div>
+              <div><h3 className="font-bold text-gray-800">{job.title}</h3><span className={`text-[10px] px-2 py-0.5 rounded-full text-white ${job.status === 'open' ? 'bg-green-500' : job.status === 'completed' ? 'bg-gray-500' : job.status === 'cancelled' ? 'bg-red-500' : 'bg-blue-500'}`}>{job.status === 'open' ? 'รอคนรับ' : job.status === 'cancelled' ? 'ยกเลิกแล้ว' : job.status === 'completed' ? 'สำเร็จ' : 'กำลังทำ'}</span></div>
               <ChevronLeft className="rotate-180 text-gray-300" />
             </div>
           </div>
@@ -874,10 +881,11 @@ function MyJobsScreen({ user, setView, setSelectedJob }) {
   );
 }
 
-function JobDetailScreen({ user, job, setView, checkAuth }) {
+function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
   const [currentJob, setCurrentJob] = useState(job);
   const [messages, setMessages] = useState([]);
-  const [msg, setMsg] = useState('');
+  const [showChat, setShowChat] = useState(false);
+  const [inputMsg, setInputMsg] = useState('');
   
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id), d => setCurrentJob({id: d.id, ...d.data()}));
@@ -885,22 +893,34 @@ function JobDetailScreen({ user, job, setView, checkAuth }) {
   }, [job.id]);
 
   useEffect(() => {
-     const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id, 'messages'), orderBy('createdAt', 'asc'));
-     const unsub = onSnapshot(q, s => setMessages(s.docs.map(d => d.data())));
-     return () => unsub();
-  }, [job.id]);
+     if(showChat) {
+        const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id, 'messages'), orderBy('createdAt', 'asc'));
+        const unsub = onSnapshot(q, s => setMessages(s.docs.map(d => d.data())));
+        return () => unsub();
+     }
+  }, [job.id, showChat]);
 
   const sendMsg = async (e) => {
     e.preventDefault();
-    if(!msg.trim()) return;
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id, 'messages'), { text: msg, senderId: user.uid, createdAt: serverTimestamp() });
-    setMsg('');
+    if(!inputMsg.trim()) return;
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id, 'messages'), { text: inputMsg, senderId: user.uid, createdAt: serverTimestamp() });
+    setInputMsg('');
   };
 
   const handleAction = async (action) => {
      if(!user) return checkAuth();
      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id);
-     if(action === 'accept') await updateDoc(ref, { status: 'in_progress', workerId: user.uid, workerName: user.displayName });
+     
+     if(action === 'accept') {
+         await updateDoc(ref, { 
+             status: 'in_progress', 
+             workerId: user.uid, 
+             workerName: userData?.displayName || user.email,
+             workerPhone: userData?.phone || user.phoneNumber || '-', 
+             acceptedAt: serverTimestamp() 
+         });
+     }
+     if(action === 'cancel') await updateDoc(ref, { status: 'cancelled' });
      if(action === 'finish') {
         const isEmp = user.uid === currentJob.employerId;
         const update = isEmp ? { employerFinished: true } : { workerFinished: true };
@@ -909,52 +929,144 @@ function JobDetailScreen({ user, job, setView, checkAuth }) {
      }
   };
 
-  const isPart = user && (user.uid === currentJob.employerId || user.uid === currentJob.workerId);
+  const isEmp = user && user.uid === currentJob.employerId;
+  const isWkr = user && user.uid === currentJob.workerId;
+  const isPart = isEmp || isWkr;
 
   return (
     <div className="flex flex-col h-full bg-white relative">
-       <div className="bg-white px-4 py-3 border-b flex items-center justify-between shadow-sm z-10"><button onClick={() => setView('home')}><ChevronLeft /></button><span className="font-bold">รายละเอียด</span><div/></div>
-       <div className="flex-1 overflow-y-auto bg-gray-50 p-4 pb-20">
+       <div className="bg-white px-4 py-3 border-b flex items-center justify-between shadow-sm z-10">
+           <button onClick={() => setView(isPart ? 'my-jobs' : 'home')}><ChevronLeft /></button>
+           <span className="font-bold">รายละเอียดงาน</span>
+           <div/>
+       </div>
+       
+       <div className="flex-1 overflow-y-auto bg-gray-50 p-4 pb-24">
+          {/* Status Banner */}
+          {currentJob.status === 'cancelled' && <div className="bg-red-100 text-red-600 p-3 rounded-xl mb-4 text-center font-bold flex items-center justify-center"><XCircle className="w-5 h-5 mr-2"/> งานนี้ถูกยกเลิกแล้ว</div>}
+          {currentJob.status === 'completed' && <div className="bg-green-100 text-green-600 p-3 rounded-xl mb-4 text-center font-bold flex items-center justify-center"><CheckCircle2 className="w-5 h-5 mr-2"/> งานเสร็จสิ้นแล้ว</div>}
+
+          {/* User Info Cards */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                  <p className="text-xs text-gray-400 mb-2 font-bold">ผู้จ้าง (Employer)</p>
+                  <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600"><UserCircle2 className="w-5 h-5"/></div>
+                      <div className="overflow-hidden">
+                          <p className="text-sm font-bold truncate">{currentJob.employerName}</p>
+                          <p className="text-xs text-gray-500 truncate">{currentJob.contactPhone}</p>
+                      </div>
+                  </div>
+              </div>
+              {currentJob.workerId ? (
+                  <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                      <p className="text-xs text-gray-400 mb-2 font-bold">ผู้รับงาน (Worker)</p>
+                      <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600"><UserCircle2 className="w-5 h-5"/></div>
+                          <div className="overflow-hidden">
+                              <p className="text-sm font-bold truncate">{currentJob.workerName}</p>
+                              <p className="text-xs text-gray-500 truncate">{currentJob.workerPhone}</p>
+                          </div>
+                      </div>
+                  </div>
+              ) : (
+                  <div className="bg-gray-100 p-3 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">
+                      รอผู้รับงาน...
+                  </div>
+              )}
+          </div>
+
           <div className="bg-white p-5 rounded-2xl shadow-sm mb-4">
-             <div className="flex justify-between items-start">
-               <h1 className="text-xl font-bold mb-2">{currentJob.title}</h1>
-               {currentJob.timingType === 'immediate' && <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded">ด่วนที่สุด (ASAP)</span>}
+             <h1 className="text-xl font-bold mb-2">{currentJob.title}</h1>
+             <div className="flex justify-between items-center mb-4">
+                <span className="text-3xl font-bold text-orange-600">฿{currentJob.budget}</span>
+                {currentJob.timingType === 'immediate' && <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded">ด่วนที่สุด (ASAP)</span>}
              </div>
-             <div className="text-3xl font-bold text-orange-600 mb-4">฿{currentJob.budget}</div>
-             <p className="text-gray-600 text-sm mb-4">{currentJob.description}</p>
+             <p className="text-gray-600 text-sm mb-4 bg-gray-50 p-3 rounded-xl">{currentJob.description}</p>
              
-             {/* Map Display & Route */}
+             {/* Map */}
              <div className="bg-gray-100 rounded-xl overflow-hidden mb-4 relative border border-gray-200 p-2">
                  <LeafletFormMap 
                     startLocation={currentJob.startLocation || currentJob.location} 
                     endLocation={currentJob.endLocation}
                     isRoute={currentJob.categoryType === 'route'}
                  />
-                 {currentJob.categoryType === 'route' && (
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-bold shadow-sm border border-gray-200 z-[400]">
-                       ระยะทาง {currentJob.distance?.toFixed(1) || '?'} กม.
-                    </div>
-                 )}
              </div>
 
-             <div className="flex items-center text-sm text-gray-500 font-medium">
-                <Clock className="w-4 h-4 mr-2"/> 
-                {currentJob.timingType === 'immediate' ? 'ต้องการทันที (ASAP)' : `${currentJob.workDate} เวลา ${currentJob.workTime}`}
+             {/* Timestamps */}
+             <div className="space-y-2 pt-2 border-t border-gray-100">
+                 <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>สร้างเมื่อ:</span>
+                    <span>{formatDate(currentJob.createdAt)}</span>
+                 </div>
+                 {currentJob.acceptedAt && (
+                     <div className="flex items-center justify-between text-xs text-green-600 font-medium">
+                        <span>รับงานเมื่อ:</span>
+                        <span>{formatDate(currentJob.acceptedAt)}</span>
+                     </div>
+                 )}
              </div>
           </div>
-          
-          {isPart && (
-             <div className="space-y-2">
-                {messages.map((m, i) => <div key={i} className={`p-2 rounded-xl text-sm w-fit max-w-[80%] ${m.senderId === user.uid ? 'bg-orange-500 text-white ml-auto' : 'bg-white border'}`}>{m.text}</div>)}
-             </div>
-          )}
        </div>
        
-       <div className="bg-white p-4 border-t absolute bottom-0 w-full">
-          {currentJob.status === 'open' && user?.uid !== currentJob.employerId && <button onClick={() => handleAction('accept')} className={styles.buttonPrimary}>รับงานนี้</button>}
-          {currentJob.status === 'in_progress' && isPart && <button onClick={() => handleAction('finish')} className="w-full bg-green-500 text-white py-3 rounded-xl font-bold">ยืนยันจบงาน</button>}
-          {isPart && currentJob.status !== 'completed' && <form onSubmit={sendMsg} className="flex gap-2 mt-2"><input value={msg} onChange={e => setMsg(e.target.value)} className="flex-1 bg-gray-100 rounded-full px-4" placeholder="พิมพ์ข้อความ..."/><button><Send className="text-orange-500"/></button></form>}
+       {/* Bottom Actions */}
+       <div className="bg-white p-4 border-t absolute bottom-0 w-full flex flex-col gap-2 shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
+          {/* Case 1: Open Job */}
+          {currentJob.status === 'open' && (
+              isEmp ? (
+                  <button onClick={() => handleAction('cancel')} className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold border border-red-100">ยกเลิกงานนี้</button>
+              ) : (
+                  <button onClick={() => handleAction('accept')} className={styles.buttonPrimary}>รับงานนี้ ({formatPrice(currentJob.budget)})</button>
+              )
+          )}
+
+          {/* Case 2: In Progress */}
+          {currentJob.status === 'in_progress' && isPart && (
+              <div className="flex gap-2">
+                  <button onClick={() => handleAction('cancel')} className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold">ยกเลิกงาน</button>
+                  <button onClick={() => handleAction('finish')} className="flex-[2] bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-green-200">
+                      {isEmp ? (currentJob.employerFinished ? 'รออีกฝ่ายยืนยัน' : 'ยืนยันจบงาน') : (currentJob.workerFinished ? 'รออีกฝ่ายยืนยัน' : 'แจ้งงานเสร็จสิ้น')}
+                  </button>
+              </div>
+          )}
        </div>
+
+       {/* Floating Chat Button */}
+       {isPart && currentJob.status !== 'cancelled' && (
+           <button 
+             onClick={() => setShowChat(true)}
+             className="absolute bottom-24 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-transform z-20"
+           >
+               <MessageSquare className="w-7 h-7" />
+               {messages.length > 0 && <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-white"></span>}
+           </button>
+       )}
+
+       {/* Chat Modal Overlay */}
+       {showChat && (
+           <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex flex-col justify-end animate-in fade-in duration-200">
+               <div className="bg-white h-[80%] rounded-t-3xl flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300">
+                   <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-3xl">
+                       <h3 className="font-bold text-gray-700 flex items-center"><MessageCircle className="w-5 h-5 mr-2 text-blue-600"/> ห้องสนทนา</h3>
+                       <button onClick={() => setShowChat(false)} className="p-2 bg-white rounded-full shadow-sm"><X className="w-5 h-5"/></button>
+                   </div>
+                   <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                       {messages.length === 0 && <p className="text-center text-gray-400 text-sm mt-10">เริ่มพูดคุยกันได้เลย...</p>}
+                       {messages.map((m, i) => (
+                           <div key={i} className={`flex ${m.senderId === user.uid ? 'justify-end' : 'justify-start'}`}>
+                               <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm shadow-sm ${m.senderId === user.uid ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border text-gray-800 rounded-bl-none'}`}>
+                                   {m.text}
+                               </div>
+                           </div>
+                       ))}
+                   </div>
+                   <form onSubmit={sendMsg} className="p-3 border-t bg-white flex gap-2 pb-6">
+                       <input autoFocus value={inputMsg} onChange={e => setInputMsg(e.target.value)} className="flex-1 bg-gray-100 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-100" placeholder="พิมพ์ข้อความ..."/>
+                       <button type="submit" className="bg-blue-600 text-white p-3 rounded-full shadow-lg"><Send className="w-5 h-5"/></button>
+                   </form>
+               </div>
+           </div>
+       )}
     </div>
   );
 }
@@ -990,7 +1102,7 @@ function ProfileScreen({ user, userData, setView, navigateTo }) {
                     <LogOut className="w-5 h-5 mr-2" /> ออกจากระบบ
                 </button>
             </div>
-            <div className="mt-8 text-center text-xs text-gray-300">v8.1 (Profile Fixes)</div>
+            <div className="mt-8 text-center text-xs text-gray-300">v9.0 (Job Detail Upgrade)</div>
         </div>
     );
 }
@@ -1068,7 +1180,6 @@ function ProfileEditScreen({ user, userData, setView, setUserData }) {
 }
 
 function NotificationSettingsScreen({ setView }) {
-    // Safety check for Notification API
     const isSupported = typeof Notification !== 'undefined';
     const [enabled, setEnabled] = useState(() => {
         if (isSupported) return Notification.permission === 'granted';
@@ -1092,11 +1203,9 @@ function NotificationSettingsScreen({ setView }) {
                 }
             } catch (error) {
                 console.error(error);
-                // Fallback for some browsers
                 setEnabled(true); 
             }
         } else {
-            // Cannot revoke permission programmatically in JS, just update state visually
             setEnabled(false); 
         }
     };
@@ -1124,6 +1233,5 @@ function NotificationSettingsScreen({ setView }) {
         </div>
     );
 }
-
 
 
