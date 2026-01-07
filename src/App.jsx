@@ -34,7 +34,7 @@ import {
   Dumbbell, Gamepad2, PawPrint, HeartHandshake, Key,
   LocateFixed, ArrowRight, Loader2, Route, 
   UserCog, Lock, ChevronRight, BellRing, ToggleLeft, ToggleRight,
-  MessageSquare, XCircle, CheckCircle2, UserCircle2, Map, Camera
+  MessageSquare, XCircle, CheckCircle2, UserCircle2, Map, Camera, Siren
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -197,6 +197,9 @@ export default function UrgentJobsApp() {
   const [userLocation, setUserLocation] = useState(null);
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [guestActionName, setGuestActionName] = useState('');
+  
+  // Notification State
+  const [newJobAlert, setNewJobAlert] = useState(null); // Stores the job that triggered the alert
 
   // Set Favicon
   useEffect(() => {
@@ -234,6 +237,53 @@ export default function UrgentJobsApp() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Real-time Job Listener for Notifications
+  useEffect(() => {
+    if (!user || !userLocation) return;
+
+    // Listen for NEW jobs only (added since connection)
+    // In a real app, you might want to query by timestamp to avoid old jobs on refresh,
+    // but here we rely on snapshot changes
+    const q = query(
+        collection(db, 'artifacts', appId, 'public', 'data', 'jobs'), 
+        where('status', '==', 'open'),
+        orderBy('createdAt', 'desc')
+        // Note: orderBy requires an index if mixed with where. If error, remove orderBy or create index.
+        // For simplicity in this demo, we might filter client side if index is missing.
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                const job = { id: change.doc.id, ...change.doc.data() };
+                
+                // 1. Check if job is very recent (within last 5 minutes) to avoid alerting old jobs
+                const now = new Date();
+                const jobTime = job.createdAt?.toDate ? job.createdAt.toDate() : new Date();
+                const diffMinutes = (now - jobTime) / 60000;
+                
+                if (diffMinutes > 5) return; // Skip old jobs loaded on init
+
+                // 2. Check if I am the employer (don't notify myself)
+                if (job.employerId === user.uid) return;
+
+                // 3. Check Distance (Radius 8km)
+                const loc = job.startLocation || job.location;
+                if (loc) {
+                    const dist = getDistanceFromLatLonInKm(userLocation.lat, userLocation.lng, loc.lat, loc.lng);
+                    if (dist <= 8) {
+                        setNewJobAlert({ ...job, distance: dist });
+                        // Optional: Play sound or vibrate here
+                        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                    }
+                }
+            }
+        });
+    });
+
+    return () => unsubscribe();
+  }, [user, userLocation]);
 
   const navigateTo = (targetView, actionName = 'ใช้งานส่วนนี้') => {
     if (['post', 'my-jobs', 'profile', 'profile-edit', 'profile-notifications'].includes(targetView) && !user) {
@@ -283,7 +333,6 @@ export default function UrgentJobsApp() {
                  {userLocation ? 'ระบุพิกัดแล้ว' : 'ไม่ระบุพิกัด'}
                </div>
              </div>
-             {/* Profile Icon with Image */}
              <div onClick={() => navigateTo('profile')} className="w-9 h-9 rounded-full border-2 border-white/50 overflow-hidden cursor-pointer bg-white/20 flex items-center justify-center">
                {userData?.photoBase64 ? (
                  <img src={userData.photoBase64} alt="Profile" className="w-full h-full object-cover" />
@@ -299,7 +348,7 @@ export default function UrgentJobsApp() {
       <main className="flex-1 overflow-y-auto relative scroll-smooth no-scrollbar">
         {view === 'auth' && <AuthScreen setUserData={setUserData} setView={setView} />}
         {view === 'home' && <HomeScreen user={user} onCategoryClick={handleCategoryClick} userLocation={userLocation} setSelectedJob={setSelectedJob} setView={setView} />}
-        {view === 'post' && <PostJobScreen user={user} setView={setView} userLocation={userLocation} selectedCategory={selectedCategory} />}
+        {view === 'post' && <PostJobScreen user={user} setView={setView} userLocation={userLocation} selectedCategory={selectedCategory} userData={userData} />}
         {view === 'my-jobs' && <MyJobsScreen user={user} setView={setView} setSelectedJob={setSelectedJob} />}
         {view === 'profile' && <ProfileScreen user={user} userData={userData} setView={setView} navigateTo={navigateTo} />}
         {view === 'profile-edit' && <ProfileEditScreen user={user} userData={userData} setView={setView} setUserData={setUserData} />}
@@ -319,7 +368,7 @@ export default function UrgentJobsApp() {
 
       {/* Guest Modal */}
       {showGuestModal && (
-        <div className="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="absolute inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom duration-300">
             <div className="flex justify-center mb-4">
               <div className="bg-orange-100 p-4 rounded-full">
@@ -340,6 +389,38 @@ export default function UrgentJobsApp() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* New Job Alert Popup */}
+      {newJobAlert && (
+          <div className="absolute top-4 left-4 right-4 z-[70] bg-white rounded-2xl shadow-2xl border-l-4 border-orange-500 p-4 animate-in slide-in-from-top duration-300">
+              <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center text-orange-600 font-bold">
+                      <Siren className="w-5 h-5 mr-2 animate-pulse" /> งานด่วนใกล้คุณ!
+                  </div>
+                  <button onClick={() => setNewJobAlert(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
+              </div>
+              <h3 className="font-bold text-gray-800 text-lg mb-1">{newJobAlert.title}</h3>
+              <p className="text-xs text-gray-500 mb-3 line-clamp-1">{newJobAlert.description}</p>
+              
+              <div className="flex items-center justify-between text-sm mb-3 bg-gray-50 p-2 rounded-lg">
+                  <div className="font-bold text-green-600">฿{newJobAlert.budget}</div>
+                  <div className="flex items-center text-gray-500 text-xs">
+                      <MapPin className="w-3 h-3 mr-1" /> ห่าง {newJobAlert.distance.toFixed(1)} กม.
+                  </div>
+              </div>
+
+              <button 
+                onClick={() => {
+                    setSelectedJob(newJobAlert);
+                    setView('job-detail');
+                    setNewJobAlert(null);
+                }}
+                className="w-full bg-orange-500 text-white py-2 rounded-xl font-bold text-sm shadow-md hover:bg-orange-600 transition"
+              >
+                  ดูรายละเอียด / รับงาน
+              </button>
+          </div>
       )}
     </div>
   );
@@ -525,7 +606,7 @@ function LocationSelector({ label, value, onChange, placeholder, iconColor, user
   );
 }
 
-function PostJobScreen({ user, setView, userLocation, selectedCategory }) {
+function PostJobScreen({ user, setView, userLocation, selectedCategory, userData }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [budget, setBudget] = useState('');
@@ -565,7 +646,8 @@ function PostJobScreen({ user, setView, userLocation, selectedCategory }) {
     try {
       const jobData = {
         employerId: user.uid,
-        employerName: user.displayName || user.email,
+        // Use userData.displayName which is the Profile Name, fallback to auth data
+        employerName: userData?.displayName || user.displayName || user.email, 
         title, description: desc, budget: Number(budget),
         category: category.id, categoryType: category.type,
         timingType,
@@ -901,8 +983,6 @@ function JobDetailScreen({ user, job, setView, checkAuth, userData }) {
      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'jobs', job.id);
      
      if(action === 'accept') {
-         // Get current user photo to store in job for quicker access? Or just rely on ID.
-         // Storing snapshots is better for history.
          await updateDoc(ref, { 
              status: 'in_progress', 
              workerId: user.uid, 
@@ -1177,7 +1257,7 @@ function ProfileScreen({ user, userData, setView, navigateTo }) {
                     <LogOut className="w-5 h-5 mr-2" /> ออกจากระบบ
                 </button>
             </div>
-            <div className="mt-8 text-center text-xs text-gray-300">v10.0 (Popup, Photo Upload, Image Chat)</div>
+            <div className="mt-8 text-center text-xs text-gray-300">v10.1 (Notification & Name Fix)</div>
         </div>
     );
 }
