@@ -40,25 +40,18 @@ import {
 const LONGDO_MAP_KEY = "442b78f3234e68f33848b756aa3071f1";
 
 // --- Firebase Configuration ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-  apiKey: "demo-key",
-  authDomain: "demo-project.firebaseapp.com",
-  projectId: "demo-project",
-  storageBucket: "demo-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef123456"
+const firebaseConfig = {
+  apiKey: "AIzaSyCrqkeQLoTApDsORzhS5N8xkbHGQ97Hs6Q",
+  authDomain: "urgent-jobs-app.firebaseapp.com",
+  projectId: "urgent-jobs-app",
+  storageBucket: "urgent-jobs-app.firebasestorage.app",
+  messagingSenderId: "256553913224",
+  appId: "1:256553913224:web:16bd14246a02989344483d"
 };
-
-let app, auth, db;
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (e) {
-  console.error("Firebase init error:", e);
-}
-
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'urgent-jobs-v1';
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = 'urgent-jobs-v1';
 
 // --- Services Data ---
 const SERVICES = [
