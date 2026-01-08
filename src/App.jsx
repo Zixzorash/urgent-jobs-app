@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -26,14 +26,15 @@ import {
 } from 'firebase/firestore';
 import { 
   MapPin, Send, User, Briefcase, MessageCircle, CheckCircle, 
-  Clock, PlusCircle, LogOut, Bell, Navigation, 
+  Clock, PlusCircle, LogOut, Bell, Navigation, Image as ImageIcon, 
   X, Zap, ChevronLeft, LogIn, Search, Filter, MoreVertical, 
   ShieldCheck, Package, Users, ShoppingBag, Utensils, 
   SprayCan, Truck, Wrench, Grid, Calendar, Phone,
   Home, Eye, Car, Shirt, Plane, Monitor, Shield, 
   Dumbbell, Gamepad2, PawPrint, HeartHandshake, Key,
-  Loader2, Camera, Siren, CheckCircle2, XCircle, UserCircle2, Lock, UserCog, BellRing, ToggleLeft, ToggleRight,
-  TestTube2
+  LocateFixed, ArrowRight, Loader2, Route, 
+  UserCog, Lock, ChevronRight, BellRing, ToggleLeft, ToggleRight,
+  MessageSquare, XCircle, CheckCircle2, UserCircle2, Map, Camera, Siren
 } from 'lucide-react';
 
 // --- Longdo Map Configuration ---
@@ -134,35 +135,31 @@ const useLongdoMap = () => {
 
 // --- Longdo Map Components ---
 
-// 1. Longdo Map Picker (Hybrid Search: OSM Search -> Longdo Display)
+// 1. Longdo Map Picker
 const LongdoMapPicker = ({ lat, lng, onSelectLocation, placeholder, isLoaded }) => {
   const mapId = useRef(`map-picker-${Math.random().toString(36).substr(2, 9)}`).current;
   const mapInstance = useRef(null);
   const markerInstance = useRef(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
 
-  // Initialize Map
   useEffect(() => {
     if (isLoaded && !mapInstance.current) {
       const longdo = window.longdo;
       const map = new longdo.Map({
         placeholder: document.getElementById(mapId),
-        lastView: false 
+        lastView: false
       });
       
-      // Set Traffic Layer
+      // Traffic Layer
       map.Layers.setBase(longdo.Layers.GRAY);
       map.Layers.add(longdo.Layers.TRAFFIC);
       
-      // Initial Location
       const startLat = lat || 13.7563;
       const startLon = lng || 100.5018;
       map.location({ lon: startLon, lat: startLat }, true);
       map.zoom(15);
 
-      // Add draggable marker
       const marker = new longdo.Marker({ lon: startLon, lat: startLat }, {
         title: 'จุดที่เลือก',
         detail: 'ลากเพื่อปรับตำแหน่ง',
@@ -171,12 +168,11 @@ const LongdoMapPicker = ({ lat, lng, onSelectLocation, placeholder, isLoaded }) 
       map.Overlays.add(marker);
       markerInstance.current = marker;
 
-      // Map Click Event -> Move Marker
+      // Event: Map Click (Move Marker)
       map.Event.bind('click', function() {
         const mouseLoc = map.location(longdo.LocationMode.Pointer);
         if (mouseLoc) {
             marker.move(mouseLoc);
-            // Reverse Geocode using OSM Nominatim for better address results
             updateLocationInfo(mouseLoc.lat, mouseLoc.lon);
         }
       });
@@ -185,35 +181,33 @@ const LongdoMapPicker = ({ lat, lng, onSelectLocation, placeholder, isLoaded }) 
     }
   }, [isLoaded]);
 
-  const updateLocationInfo = async (latitude, longitude) => {
-      try {
-          // Use OSM Nominatim for Reverse Geocoding (Hybrid)
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`);
-          const data = await res.json();
-          let name = "ตำแหน่งที่ปักหมุด";
-          let addr = `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`;
-          if (data && data.display_name) {
-              addr = data.display_name;
-              // Try to find a short name
-              name = data.name || data.address.road || data.address.suburb || name;
-          }
-          if(onSelectLocation) onSelectLocation(latitude, longitude, name, addr);
-      } catch (e) {
-           console.error("Reverse geocode error:", e);
-           if(onSelectLocation) onSelectLocation(latitude, longitude, "ตำแหน่งที่เลือก", `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`);
-      }
+  const updateLocationInfo = (latitude, longitude) => {
+      // Reverse Geocode via OSM Nominatim (Hybrid)
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`)
+          .then(res => res.json())
+          .then(data => {
+              let name = "ตำแหน่งที่ปักหมุด";
+              let addr = `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`;
+              if (data && data.display_name) {
+                  addr = data.display_name;
+                  name = data.name || data.address.road || data.address.suburb || name;
+              }
+              if(onSelectLocation) onSelectLocation(latitude, longitude, name, addr);
+          })
+          .catch(e => {
+               if(onSelectLocation) onSelectLocation(latitude, longitude, "ตำแหน่งที่เลือก", `Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`);
+          });
   };
 
-  // Search using OSM Nominatim (Hybrid)
   const handleSearch = async (term) => {
       setSearchTerm(term);
       if (term.length > 2) {
-          setIsSearching(true);
           try {
+              // Search via OSM Nominatim (Hybrid)
               const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${term}&countrycodes=th&limit=5&addressdetails=1`);
               const data = await res.json();
               setSuggestions(data || []);
-          } catch(e) { console.error(e); setSuggestions([]); } finally { setIsSearching(false); }
+          } catch(e) { console.error(e); setSuggestions([]); }
       } else {
           setSuggestions([]);
       }
@@ -225,14 +219,11 @@ const LongdoMapPicker = ({ lat, lng, onSelectLocation, placeholder, isLoaded }) 
       const newLat = parseFloat(item.lat);
       const newLon = parseFloat(item.lon);
       
-      // Update Longdo Map
       if(mapInstance.current && markerInstance.current) {
           const loc = { lat: newLat, lon: newLon };
           mapInstance.current.location(loc, true);
           mapInstance.current.zoom(16);
           markerInstance.current.move(loc);
-          
-          // Callback
           if(onSelectLocation) onSelectLocation(newLat, newLon, item.display_name.split(',')[0], item.display_name);
       }
   };
@@ -248,33 +239,24 @@ const LongdoMapPicker = ({ lat, lng, onSelectLocation, placeholder, isLoaded }) 
                 type="text"
                 value={searchTerm}
                 onChange={(e) => handleSearch(e.target.value)}
-                placeholder={placeholder || "ค้นหาสถานที่ (เช่น สยาม, ลาดพร้าว)..."}
+                placeholder={placeholder || "ค้นหาสถานที่..."}
                 className="bg-transparent border-none outline-none w-full text-sm"
               />
               {searchTerm && <button onClick={() => {setSearchTerm(''); setSuggestions([])}}><X className="w-4 h-4 text-gray-400"/></button>}
            </div>
            {suggestions.length > 0 && (
-               <div className="absolute top-full left-0 right-0 bg-white border border-gray-100 shadow-lg rounded-b-xl z-20 max-h-48 overflow-y-auto">
+               <div className="absolute top-full left-0 right-0 bg-white border border-gray-100 shadow-lg rounded-b-xl z-20 max-h-40 overflow-y-auto">
                    {suggestions.map((item, idx) => (
-                       <div key={idx} onClick={() => selectSuggestion(item)} className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0 text-sm flex items-start">
-                           <MapPin className="w-4 h-4 text-gray-400 mr-2 mt-0.5 shrink-0" />
-                           <div>
-                               <p className="font-bold text-gray-800 truncate line-clamp-1">{item.display_name.split(',')[0]}</p>
-                               <p className="text-xs text-gray-500 line-clamp-1">{item.display_name}</p>
-                           </div>
+                       <div key={idx} onClick={() => selectSuggestion(item)} className="p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0 text-sm">
+                           <p className="font-bold text-gray-800 truncate">{item.display_name.split(',')[0]}</p>
+                           <p className="text-xs text-gray-500 truncate">{item.display_name}</p>
                        </div>
                    ))}
                </div>
            )}
-           {isSearching && suggestions.length === 0 && searchTerm.length > 2 && (
-               <div className="absolute top-full left-0 right-0 bg-white p-2 text-center text-xs text-gray-400 shadow-sm z-20">กำลังค้นหา...</div>
-           )}
       </div>
       <div id={mapId} className="rounded-xl overflow-hidden border border-gray-200 h-48 w-full bg-gray-100 relative z-0" />
-      <div className="flex justify-between items-center px-1">
-          <div className="text-[10px] text-gray-400">Search by OSM</div>
-          <div className="text-[10px] text-gray-400">Map by Longdo</div>
-      </div>
+      <div className="text-[10px] text-gray-400 text-right">Map by Longdo | Search by OSM</div>
     </div>
   );
 };
@@ -290,7 +272,7 @@ const LongdoRouteMap = ({ startLocation, endLocation, isRoute, onDistanceCalcula
         const map = new longdo.Map({
             placeholder: document.getElementById(mapId),
             lastView: false,
-            ui: longdo.UiComponent.None // Clean UI
+            ui: longdo.UiComponent.None
         });
         map.Layers.setBase(longdo.Layers.GRAY);
         map.Layers.add(longdo.Layers.TRAFFIC);
@@ -308,9 +290,8 @@ const LongdoRouteMap = ({ startLocation, endLocation, isRoute, onDistanceCalcula
               map.Overlays.add(new longdo.Marker({ lat: startLocation.lat, lon: startLocation.lng }, { title: 'ต้นทาง', detail: startLocation.name }));
               map.Overlays.add(new longdo.Marker({ lat: endLocation.lat, lon: endLocation.lng }, { title: 'ปลายทาง', detail: endLocation.name }));
 
-              // Auto Route (Using Longdo Route Service via Library)
-              // Note: Longdo JS API has a route widget, but for custom display we use Route.add
-              map.Route.placeholder(document.getElementById('route-result')); // Hidden placeholder
+              // Simple Route
+              map.Route.placeholder(document.getElementById('route-result')); 
               map.Route.add(new longdo.Marker({ lat: startLocation.lat, lon: startLocation.lng }));
               map.Route.add(new longdo.Marker({ lat: endLocation.lat, lon: endLocation.lng }));
               map.Route.search();
@@ -320,7 +301,6 @@ const LongdoRouteMap = ({ startLocation, endLocation, isRoute, onDistanceCalcula
                   onDistanceCalculated(dist);
               }
 
-              // Fit Bounds
               setTimeout(() => {
                  const bound = longdo.Util.locationBound([
                     { lat: startLocation.lat, lon: startLocation.lng },
@@ -328,7 +308,7 @@ const LongdoRouteMap = ({ startLocation, endLocation, isRoute, onDistanceCalcula
                  ]);
                  map.bound(bound);
                  map.zoom(map.zoom() - 1);
-              }, 500);
+              }, 1000);
               
           } else if (startLocation) {
               map.Overlays.add(new longdo.Marker({ lat: startLocation.lat, lon: startLocation.lng }));
@@ -524,8 +504,6 @@ function NavItem({ icon, label, active, onClick, isCenter }) {
   return <button onClick={onClick} className={`flex flex-col items-center justify-center space-y-1 w-16 py-1 rounded-xl transition-all ${active ? 'text-orange-600 bg-orange-50' : 'text-gray-400 hover:bg-gray-50'}`}>{React.cloneElement(icon, { size: 24, strokeWidth: active ? 2.5 : 2 })}<span className="text-[10px] font-medium">{label}</span></button>;
 }
 
-// ... LocationSelector removed in favor of direct GoogleMapPicker ...
-
 function PostJobScreen({ user, setView, userLocation, selectedCategory, userData, styles, isMapsLoaded }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -570,13 +548,6 @@ function PostJobScreen({ user, setView, userLocation, selectedCategory, userData
       const loc = { lat, lng, name, address: addr };
       if (type === 'start') setStartLocation(loc);
       else setEndLocation(loc);
-      
-      // Calculate Distance
-      if (isRouteService && type === 'start' && endLocation) {
-         setDistance(getDistanceFromLatLonInKm(lat, lng, endLocation.lat, endLocation.lng));
-      } else if (isRouteService && type === 'end' && startLocation) {
-         setDistance(getDistanceFromLatLonInKm(startLocation.lat, startLocation.lng, lat, lng));
-      }
   };
 
   return (
@@ -703,11 +674,15 @@ function MyJobsScreen({ user, setView, setSelectedJob, styles }) {
 }
 function ProfileScreen({ user, userData, setView, navigateTo, styles }) {
     if (!user) return null;
+    if (!userData) return <div className="flex h-full items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-orange-500"/></div>;
+
     return (
-        <div className="flex flex-col h-full bg-gray-50"><div className="bg-white p-6 pb-8 rounded-b-3xl shadow-sm mb-4 flex flex-col items-center relative overflow-hidden"><div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-orange-400 to-amber-500"></div><div className="w-24 h-24 bg-white p-1 rounded-full shadow-lg z-10 mb-3 mt-8"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-4 border-white">{userData?.photoBase64 ? <img src={userData.photoBase64} className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-gray-400" />}</div></div><h2 className="text-xl font-bold text-gray-800">{userData?.displayName}</h2><p className="text-sm text-gray-500">{userData?.email}</p></div><div className="px-4 space-y-3"><div className="bg-white rounded-xl shadow-sm overflow-hidden"><button onClick={() => navigateTo('profile-edit')} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition border-b border-gray-50"><div className="flex items-center"><UserCog className="w-5 h-5 text-gray-400 mr-3"/> <span className="text-sm font-medium">ข้อมูลของฉัน</span></div><ChevronRight className="w-4 h-4 text-gray-300" /></button><button onClick={() => navigateTo('profile-notifications')} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition"><div className="flex items-center"><BellRing className="w-5 h-5 text-gray-400 mr-3"/> <span className="text-sm font-medium">การแจ้งเตือน</span></div><ChevronRight className="w-4 h-4 text-gray-300" /></button></div><button onClick={() => { signOut(auth); setView('home'); }} className="w-full bg-white rounded-xl p-4 text-red-500 font-bold flex items-center justify-center shadow-sm hover:bg-red-50 transition"><LogOut className="w-5 h-5 mr-2" /> ออกจากระบบ</button></div><div className="mt-8 text-center text-xs text-gray-300">v12.5 (Stable Longdo Integration)</div></div>
+        <div className="flex flex-col h-full bg-gray-50"><div className="bg-white p-6 pb-8 rounded-b-3xl shadow-sm mb-4 flex flex-col items-center relative overflow-hidden"><div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-orange-400 to-amber-500"></div><div className="w-24 h-24 bg-white p-1 rounded-full shadow-lg z-10 mb-3 mt-8"><div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-4 border-white">{userData?.photoBase64 ? <img src={userData.photoBase64} className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-gray-400" />}</div></div><h2 className="text-xl font-bold text-gray-800">{userData?.displayName}</h2><p className="text-sm text-gray-500">{userData?.email}</p></div><div className="px-4 space-y-3"><div className="bg-white rounded-xl shadow-sm overflow-hidden"><button onClick={() => navigateTo('profile-edit')} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition border-b border-gray-50"><div className="flex items-center"><UserCog className="w-5 h-5 text-gray-400 mr-3"/> <span className="text-sm font-medium">ข้อมูลของฉัน</span></div><ChevronRight className="w-4 h-4 text-gray-300" /></button><button onClick={() => navigateTo('profile-notifications')} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition"><div className="flex items-center"><BellRing className="w-5 h-5 text-gray-400 mr-3"/> <span className="text-sm font-medium">การแจ้งเตือน</span></div><ChevronRight className="w-4 h-4 text-gray-300" /></button></div><button onClick={() => { signOut(auth); setView('home'); }} className="w-full bg-white rounded-xl p-4 text-red-500 font-bold flex items-center justify-center shadow-sm hover:bg-red-50 transition"><LogOut className="w-5 h-5 mr-2" /> ออกจากระบบ</button></div><div className="mt-8 text-center text-xs text-gray-300">v12.0 (Longdo Map Integration)</div></div>
     );
 }
+
 function ProfileEditScreen({ user, userData, setView, setUserData, styles }) {
+    if (!userData) return <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-orange-500"/></div>;
     const [name, setName] = useState(userData?.displayName || '');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
